@@ -1,0 +1,240 @@
+/*
+code sas projekt 
+okan bieber 874666
+okhtay wahid far 870485
+
+*/
+/*aufg a*/
+DATA gruppeA;
+	DO i=1 TO 25;
+		Gruppe='A';
+		alter=ROUND(RAND('Normal',27,5));
+		OUTPUT;
+	END;
+	KEEP alter Gruppe i;
+RUN;
+
+DATA gruppeB;
+	DO i=26 TO 50;
+		Gruppe='B';
+		alter=ROUND(RAND('Normal',30,5));
+		OUTPUT;
+	END;
+	KEEP alter Gruppe i;
+RUN;
+
+PROC SQL;
+	CREATE TABLE beideGruppen AS
+		SELECT *
+		FROM gruppeA
+		
+		OUTER UNION CORR
+		
+		SELECT * 
+		FROM gruppeB
+		;
+QUIT;
+
+/*aufg b*/
+/*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+/* t test und bestimmung mittelwert usw. */
+ods noproctitle;
+ods graphics / imagemap=on;
+
+/* Test auf Normalität */
+proc univariate data=WORK.BEIDEGRUPPEN normal mu0=0;
+	ods select TestsForNormality;
+	class Gruppe;
+	var alter;
+run;
+
+/* t-Test */
+proc ttest data=WORK.BEIDEGRUPPEN sides=2 plots=none  ;
+	class Gruppe;
+	var alter;
+run;
+
+/*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+/*aufg c*/
+DATA zufallZahlen;
+	CALL STREAMINIT(5557);
+	DO i=1 TO 50;
+		x=RAND('UNIFORM');
+		output;
+	END;
+RUN;
+
+PROC SQL;
+	CREATE TABLE sortieren AS 
+	SELECT * FROM work.beidegruppen AS l
+	FULL JOIN zufallzahlen AS r
+			ON l.i=r.i
+	order by x ;
+QUIT;
+
+DATA zaehler;
+	DO j=1 TO 50;
+		OUTPUT;
+	END;
+RUN;
+
+DATA sortiert;
+	MERGE work.sortieren zaehler;
+	DROP i;
+RUN;
+PROC PRINT DATA= work.sortiert;
+RUN;
+
+/* in 1er schritten auf missing setzen*/
+%MACRO test();
+	%DO i=1 %TO 26;
+		DATA plot_sortiertTTest&i;
+			SET sortiert;
+			DO laufVar=0 TO &i.;
+			IF j < laufVar THEN alter =.;
+			END;
+			DROP laufVar j;
+		RUN;
+		**ods output ttests=tabelle;
+		**ods noproctitle;
+		**ods graphics / imagemap=on;
+		**ods output Statistics=Statistics1 ttests=ttests;
+		**ods trace on;
+		
+		/* t-Test */
+		ods output ConfLimits=KIntervall;
+		ods output TTests=p_wert;
+		PROC TTEST data=plot_sortiertTTest&i sides=2 plots=none ;
+			
+			class Gruppe;
+			var alter;
+		RUN;
+		
+		/*plot_&i*/
+		
+		PROC SQL;
+	
+				CREATE TABLE plot_011 AS
+				SELECT Mean AS MeanA, LowerCLMean AS LCLA, 	UpperCLMean AS UCLA ,variable   
+				FROM KIntervall As a
+				WHERE Class='A';
+				
+				CREATE TABLE plot_022 AS
+				SELECT Mean AS MeanB, LowerCLMean AS LCLB, 	UpperCLMean AS UCLB ,variable 
+				FROM KIntervall As b
+				WHERE Class='B';
+				
+				CREATE TABLE plot_033 AS
+				SELECT Mean AS MeanDiff, variable 
+				FROM KIntervall 
+				WHERE Variances='Gleich';
+				
+				CREATE TABLE plot_011_022 AS
+				SELECT *  
+				FROM plot_011 as a
+				left join plot_022 as b on a.variable=b.variable 
+				;
+				
+				CREATE TABLE plot_all AS
+				SELECT *  
+				FROM plot_011_022 
+				as c
+				left join plot_033 as d on c.variable=d.variable;
+				
+				CREATE TABLE p_wert_plot AS 
+				select Probt As p, variable from p_wert;
+				
+				CREATE TABLE komplett_plot AS 
+				select * from plot_all as e
+				left join p_wert_plot as f on e.variable=f.variable;
+				
+		QUIT;
+		
+
+		/*
+		PROC PRINT DATA= plot_011;
+		RUN;
+		PROC PRINT DATA= plot_022;
+		RUN;
+		PROC PRINT DATA= plot_033;
+		RUN;
+		
+		PROC PRINT DATA= plot_011_022 ;
+		RUN;
+		*/
+		**PROC PRINT DATA= plot_all ;
+		**RUN;
+		
+		/*KIntervall als datensatz testtest speichern und ausgeben*/
+		/*
+		DATA testtest  ;
+			SET KIntervall;
+		RUN;
+		PROC PRINT DATA= testtest;
+		RUN;
+		
+		
+		DATA testtest2  ;
+			SET plot_011_022;
+		RUN;
+		PROC PRINT DATA= testtest2;
+		RUN;
+		
+		
+		DATA testtest3  ;
+			SET plot_all;
+		RUN;
+		PROC PRINT DATA= testtest3;
+		RUN;
+		
+		DATA testtest4;
+			SET p_wert_plot;
+		RUN;
+		PROC PRINT DATA= testtest4;
+		RUN;
+		*/
+		DATA testtest5;
+			SET komplett_plot;
+			
+			
+		RUN;
+		PROC PRINT DATA= testtest5;
+		RUN;
+		
+		
+	/* endtabelle damit nur eine zeile */
+		data test;
+			x=1;
+			OUTPUT;
+			x=2;
+			OUTPUT;
+		RUN;
+	
+		DATA blabla;
+			MERGE  komplett_plot test;
+			
+		RUN;
+		PROC SQL;
+			create table end_daten&i as 
+			select * from blabla where x=1;
+		quit;
+		PROC PRINT DATA= work.blablabla;
+		RUN;
+		
+		
+		
+		
+	%END;
+%MEND test;
+%test();
+
+
+DATA all;
+**SET plot:;
+set end_daten:;
+
+RUN;
+
+PROC print data= all;
+RUN;
